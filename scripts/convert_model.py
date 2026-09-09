@@ -126,19 +126,36 @@ def convert_json_to_jinja(json_file_path, output_path):
 
 
 if __name__ == '__main__':
-    lm_config = MiniMindConfig(hidden_size=768, num_hidden_layers=8, max_seq_len=8192, use_moe=False)
+    import argparse
 
-    # convert torch to transformers
-    torch_path = f"../out/full_sft_{lm_config.hidden_size}{'_moe' if lm_config.use_moe else ''}.pth"
-    transformers_path = '../minimind-3'
-    convert_torch2transformers(torch_path, transformers_path)
+    parser = argparse.ArgumentParser(description="MiniMind 模型格式转换")
+    parser.add_argument('--mode', default='torch2transformers', type=str,
+                        choices=['torch2transformers', 'torch2transformers_minimind', 'transformers2torch', 'merge_lora'],
+                        help="转换模式（torch2transformers=转为Qwen3生态兼容结构，torch2transformers_minimind=转为MiniMind自定义结构）")
+    parser.add_argument('--hidden_size', default=768, type=int, help="隐藏层维度")
+    parser.add_argument('--num_hidden_layers', default=8, type=int, help="隐藏层数量")
+    parser.add_argument('--max_seq_len', default=8192, type=int, help="最大序列长度")
+    parser.add_argument('--use_moe', default=0, type=int, choices=[0, 1], help="是否使用MoE架构（0=否，1=是）")
+    parser.add_argument('--weight', default='full_sft', type=str, help="权重名称前缀（pretrain/full_sft/dpo/grpo等）")
+    parser.add_argument('--lora_weight', default='lora_identity', type=str, help="LoRA权重名称（merge_lora模式使用）")
+    parser.add_argument('--transformers_path', default='../minimind-3', type=str, help="transformers格式模型目录")
+    args = parser.parse_args()
 
-    # # merge lora
-    # base_torch_path = f"../out/full_sft_{lm_config.hidden_size}{'_moe' if lm_config.use_moe else ''}.pth"
-    # lora_path = f"../out/lora_identity_{lm_config.hidden_size}{'_moe' if lm_config.use_moe else ''}.pth"
-    # merged_torch_path = f"../out/merge_identity_{lm_config.hidden_size}{'_moe' if lm_config.use_moe else ''}.pth"
-    # convert_merge_base_lora(base_torch_path, lora_path, merged_torch_path)
+    lm_config = MiniMindConfig(hidden_size=args.hidden_size, num_hidden_layers=args.num_hidden_layers,
+                               max_seq_len=args.max_seq_len, use_moe=bool(args.use_moe))
+    moe_suffix = '_moe' if lm_config.use_moe else ''
+    torch_path = f"../out/{args.weight}_{lm_config.hidden_size}{moe_suffix}.pth"
 
-    # convert_transformers2torch(transformers_path, torch_path)
+    if args.mode == 'torch2transformers':
+        convert_torch2transformers(torch_path, args.transformers_path)
+    elif args.mode == 'torch2transformers_minimind':
+        convert_torch2transformers_minimind(torch_path, args.transformers_path)
+    elif args.mode == 'transformers2torch':
+        convert_transformers2torch(args.transformers_path, torch_path)
+    elif args.mode == 'merge_lora':
+        lora_path = f"../out/{args.lora_weight}_{lm_config.hidden_size}{moe_suffix}.pth"
+        merged_torch_path = f"../out/merge_{args.lora_weight.replace('lora_', '')}_{lm_config.hidden_size}{moe_suffix}.pth"
+        convert_merge_base_lora(torch_path, lora_path, merged_torch_path)
+
     # convert_json_to_jinja('../model/tokenizer_config.json', '../model/chat_template.jinja')
     # convert_jinja_to_json('../model/chat_template.jinja')
