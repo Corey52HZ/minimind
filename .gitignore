@@ -21,5 +21,8 @@ gguf/
 scripts/minimind-*/
 model_learn_tokenizer/
 
+# 本地下载的 Reward Model
+reward_model/
+
 # 运行日志
 *.log
