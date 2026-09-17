@@ -91,12 +91,14 @@ def grpo_train_epoch(epoch, loader, iters, rollout_engine, ref_model, reward_mod
         prompt_lens = rollout_result.prompt_lens.to(args.device)
         full_mask = (outputs != tokenizer.pad_token_id).long()
         logp_pos = prompt_lens.unsqueeze(1) - 1 + torch.arange(completion_ids.size(1), device=args.device).unsqueeze(0)
+        full_mask.scatter_(1, logp_pos + 1, rollout_result.completion_mask.to(args.device, dtype=full_mask.dtype))
 
         rewards = calculate_rewards(prompts, completions, reward_model).to(args.device)  # [B*num_gen]
 
-        model_unwrapped = model.module if isinstance(model, DistributedDataParallel) else model
         with autocast_ctx:
-            res = model_unwrapped(outputs, attention_mask=full_mask)
+            # 反向传播必须经过 DDP 包装后的模块：直接调用 .module 会跳过
+            # DDP 的 prepare_for_backward，梯度不会 all-reduce，各卡静默发散。
+            res = model(outputs, attention_mask=full_mask)
             aux_loss = res.aux_loss if lm_config.use_moe else torch.tensor(0.0, device=args.device)
             per_token_logps = F.log_softmax(res.logits[:, :-1, :], dim=-1).gather(2, outputs[:, 1:].unsqueeze(-1)).squeeze(-1).gather(1, logp_pos)
 
@@ -312,7 +314,8 @@ if __name__ == "__main__":
         Logger('torch.compile enabled')
         rollout_engine.update_policy(model)
     if dist.is_initialized():
-        model = DistributedDataParallel(model, device_ids=[local_rank])
+        # 同 train_ppo：RoPE buffer 各 rank 一致，每步广播纯属浪费
+        model = DistributedDataParallel(model, device_ids=[local_rank], broadcast_buffers=False)
     rollout_engine.update_policy(model)
     
     # ========== 8. 开始训练 ==========
