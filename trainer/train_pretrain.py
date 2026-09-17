@@ -98,6 +98,10 @@ if __name__ == "__main__":
     parser.add_argument('--num_hidden_layers', default=8, type=int, help="隐藏层数量")
     parser.add_argument('--max_seq_len', default=340, type=int, help="训练的最大截断长度（中文1token≈1.5~1.7字符）")
     parser.add_argument('--use_moe', default=0, type=int, choices=[0, 1], help="是否使用MoE架构（0=否，1=是）")
+    parser.add_argument('--num_experts', default=4, type=int, help="MoE专家总数")
+    parser.add_argument('--num_experts_per_tok', default=1, type=int, help="每个token激活的专家数")
+    parser.add_argument('--moe_intermediate_size', default=None, type=int, help="每个MoE专家的FFN中间维度")
+    parser.add_argument('--router_aux_loss_coef', default=5e-4, type=float, help="MoE路由负载均衡损失系数")
     parser.add_argument('--seed', default=42, type=int, help="随机种子（DDP下每个rank为seed+rank，每轮为seed+epoch）")
     parser.add_argument("--data_path", type=str, default="../dataset/pretrain_t2t_mini.jsonl", help="预训练数据路径")
     parser.add_argument('--from_weight', default='none', type=str, help="基于哪个权重训练，为none则从头开始")
@@ -114,8 +118,24 @@ if __name__ == "__main__":
     
     # ========== 2. 配置目录、模型参数、检查ckp ==========
     os.makedirs(args.save_dir, exist_ok=True)
-    lm_config = MiniMindConfig(hidden_size=args.hidden_size, num_hidden_layers=args.num_hidden_layers, use_moe=bool(args.use_moe))
-    ckp_data = lm_checkpoint(lm_config, weight=args.save_weight, save_dir='../checkpoints') if args.from_resume==1 else None
+    moe_kwargs = {
+        'num_experts': args.num_experts,
+        'num_experts_per_tok': args.num_experts_per_tok,
+        'router_aux_loss_coef': args.router_aux_loss_coef,
+    }
+    if args.moe_intermediate_size is not None:
+        moe_kwargs['moe_intermediate_size'] = args.moe_intermediate_size
+    lm_config = MiniMindConfig(
+        hidden_size=args.hidden_size,
+        num_hidden_layers=args.num_hidden_layers,
+        use_moe=bool(args.use_moe),
+        **moe_kwargs,
+    )
+    ckp_data = lm_checkpoint(
+        lm_config,
+        weight=args.save_weight,
+        save_dir=os.path.join(os.path.dirname(args.save_dir), 'checkpoints')
+    ) if args.from_resume == 1 else None
     
     # ========== 3. 设置混合精度 ==========
     device_type = "cuda" if "cuda" in args.device else ("mps" if "mps" in args.device else "cpu")
