@@ -1,7 +1,10 @@
 __pycache__/
 *.pyc
 .DS_Store
-out
+# out 目录内容整体忽略（模型权重文件），但保留模型演进族谱文档
+# 注意：必须用 out/* 而非 out，否则 Git 不会进入目录，排除规则 ! 无法生效
+out/*
+!out/MODEL_LINEAGE.md
 website/
 docs-minimind/
 
