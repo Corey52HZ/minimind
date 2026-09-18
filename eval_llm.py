@@ -91,4 +91,7 @@ def main():
         print(f'\n[Speed]: {gen_tokens / (time.time() - st):.2f} tokens/s\n\n') if args.show_speed else print('\n\n')
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (EOFError, KeyboardInterrupt):
+        print()
